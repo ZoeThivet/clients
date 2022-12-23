@@ -15,6 +15,7 @@ import {
   ButtonModule,
   IconButtonModule,
   CalloutModule,
+  CheckboxModule,
   DialogModule,
   FormFieldModule,
   IconModule,
@@ -27,6 +28,8 @@ import {
   ToggleGroupModule,
   ColorPasswordModule,
 } from "@bitwarden/components";
+
+import { BreadcrumbsModule } from "./components/breadcrumbs/breadcrumbs.module";
 
 // Register the locales for the application
 import "./locales";
@@ -56,6 +59,7 @@ import "./locales";
     BadgeListModule,
     ButtonModule,
     CalloutModule,
+    CheckboxModule,
     DialogModule,
     FormFieldModule,
     IconButtonModule,
@@ -71,6 +75,7 @@ import "./locales";
     ColorPasswordModule,
 
     // Web specific
+    BreadcrumbsModule,
   ],
   exports: [
     CommonModule,
@@ -89,6 +94,7 @@ import "./locales";
     BadgeListModule,
     ButtonModule,
     CalloutModule,
+    CheckboxModule,
     DialogModule,
     FormFieldModule,
     IconButtonModule,
@@ -104,6 +110,7 @@ import "./locales";
     ColorPasswordModule,
 
     // Web specific
+    BreadcrumbsModule,
   ],
   providers: [DatePipe],
   bootstrap: [],

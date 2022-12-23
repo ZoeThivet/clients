@@ -1,22 +1,18 @@
 import { DIALOG_DATA, DialogConfig, DialogRef } from "@angular/cdk/dialog";
 import { Component, Inject, OnDestroy, OnInit } from "@angular/core";
-import { FormBuilder } from "@angular/forms";
+import { FormBuilder, Validators } from "@angular/forms";
 import { combineLatest, of, shareReplay, Subject, switchMap, takeUntil } from "rxjs";
 
 import { ApiService } from "@bitwarden/common/abstractions/api.service";
 import { CollectionService } from "@bitwarden/common/abstractions/collection.service";
 import { I18nService } from "@bitwarden/common/abstractions/i18n.service";
-import { LogService } from "@bitwarden/common/abstractions/log.service";
 import { OrganizationUserService } from "@bitwarden/common/abstractions/organization-user/organization-user.service";
 import { OrganizationService } from "@bitwarden/common/abstractions/organization/organization.service.abstraction";
 import { PlatformUtilsService } from "@bitwarden/common/abstractions/platformUtils.service";
 import { OrganizationUserStatusType } from "@bitwarden/common/enums/organizationUserStatusType";
 import { OrganizationUserType } from "@bitwarden/common/enums/organizationUserType";
 import { PermissionsApi } from "@bitwarden/common/models/api/permissions.api";
-import { CollectionData } from "@bitwarden/common/models/data/collection.data";
-import { Collection } from "@bitwarden/common/models/domain/collection";
 import { Organization } from "@bitwarden/common/models/domain/organization";
-import { CollectionDetailsResponse } from "@bitwarden/common/models/response/collection.response";
 import { CollectionView } from "@bitwarden/common/models/view/collection.view";
 import { DialogService } from "@bitwarden/components";
 
@@ -68,9 +64,6 @@ export class MemberDialogComponent implements OnInit, OnDestroy {
   editMode = false;
   isRevoked = false;
   title: string;
-  emails: string;
-  type: OrganizationUserType = OrganizationUserType.User;
-  permissions = new PermissionsApi();
   access: "all" | "selected" = "selected";
   collections: CollectionView[] = [];
   organizationUserType = OrganizationUserType;
@@ -78,49 +71,43 @@ export class MemberDialogComponent implements OnInit, OnDestroy {
   PermissionMode = PermissionMode;
 
   protected organization: Organization;
-  protected accessItems: AccessItemView[] = [];
+  protected collectionAccessItems: AccessItemView[] = [];
+  protected groupAccessItems: AccessItemView[] = [];
   protected tabIndex: MemberDialogTab;
-  // Stub, to be filled out in upcoming PRs
   protected formGroup = this.formBuilder.group({
+    emails: ["", [Validators.required]],
+    type: OrganizationUserType.User,
     accessAllCollections: false,
     access: [[] as AccessItemValue[]],
+    groups: [[] as AccessItemValue[]],
+  });
+
+  protected permissionsGroup = this.formBuilder.group({
+    manageAssignedCollectionsGroup: this.formBuilder.group<Record<string, boolean>>({
+      manageAssignedCollections: false,
+      editAssignedCollections: false,
+      deleteAssignedCollections: false,
+    }),
+    manageAllCollectionsGroup: this.formBuilder.group<Record<string, boolean>>({
+      manageAllCollections: false,
+      createNewCollections: false,
+      editAnyCollection: false,
+      deleteAnyCollection: false,
+    }),
+    accessEventLogs: false,
+    accessImportExport: false,
+    accessReports: false,
+    manageGroups: false,
+    manageSso: false,
+    managePolicies: false,
+    manageUsers: false,
+    manageResetPassword: false,
   });
 
   private destroy$ = new Subject<void>();
 
-  manageAllCollectionsCheckboxes = [
-    {
-      id: "createNewCollections",
-      get: () => this.permissions.createNewCollections,
-      set: (v: boolean) => (this.permissions.createNewCollections = v),
-    },
-    {
-      id: "editAnyCollection",
-      get: () => this.permissions.editAnyCollection,
-      set: (v: boolean) => (this.permissions.editAnyCollection = v),
-    },
-    {
-      id: "deleteAnyCollection",
-      get: () => this.permissions.deleteAnyCollection,
-      set: (v: boolean) => (this.permissions.deleteAnyCollection = v),
-    },
-  ];
-
-  manageAssignedCollectionsCheckboxes = [
-    {
-      id: "editAssignedCollections",
-      get: () => this.permissions.editAssignedCollections,
-      set: (v: boolean) => (this.permissions.editAssignedCollections = v),
-    },
-    {
-      id: "deleteAssignedCollections",
-      get: () => this.permissions.deleteAssignedCollections,
-      set: (v: boolean) => (this.permissions.deleteAssignedCollections = v),
-    },
-  ];
-
   get customUserTypeSelected(): boolean {
-    return this.type === OrganizationUserType.Custom;
+    return this.formGroup.value.type === OrganizationUserType.Custom;
   }
 
   get accessAllCollections(): boolean {
@@ -135,7 +122,6 @@ export class MemberDialogComponent implements OnInit, OnDestroy {
     private collectionService: CollectionService,
     private platformUtilsService: PlatformUtilsService,
     private organizationService: OrganizationService,
-    private logService: LogService,
     private formBuilder: FormBuilder,
     // TODO: We should really look into consolidating naming conventions for these services
     private collectionAdminService: CollectionAdminService,
@@ -145,45 +131,9 @@ export class MemberDialogComponent implements OnInit, OnDestroy {
   ) {}
 
   async ngOnInit() {
-    this.editMode = this.loading = this.params.organizationUserId != null;
+    this.editMode = this.params.organizationUserId != null;
     this.tabIndex = this.params.initialTab ?? MemberDialogTab.Role;
-
-    const organization = this.organizationService.get(this.params.organizationId);
-    this.canUseCustomPermissions = organization.useCustomPermissions;
-    await this.loadCollections();
-
-    if (this.editMode) {
-      this.editMode = true;
-      this.title = this.i18nService.t("editMember");
-      try {
-        const user = await this.organizationUserService.getOrganizationUser(
-          this.params.organizationId,
-          this.params.organizationUserId
-        );
-        this.access = user.accessAll ? "all" : "selected";
-        this.type = user.type;
-        this.isRevoked = user.status === OrganizationUserStatusType.Revoked;
-        if (user.type === OrganizationUserType.Custom) {
-          this.permissions = user.permissions;
-        }
-        if (user.collections != null && this.collections != null) {
-          user.collections.forEach((s) => {
-            const collection = this.collections.filter((c) => c.id === s.id);
-            if (collection != null && collection.length > 0) {
-              (collection[0] as any).checked = true;
-              collection[0].readOnly = s.readOnly;
-              collection[0].hidePasswords = s.hidePasswords;
-            }
-          });
-        }
-      } catch (e) {
-        this.logService.error(e);
-      }
-    } else {
-      this.title = this.i18nService.t("inviteMember");
-    }
-
-    // ----------- New data fetching below ---------------
+    this.title = this.i18nService.t(this.editMode ? "editMember" : "inviteMember");
 
     const organization$ = of(this.organizationService.get(this.params.organizationId)).pipe(
       shareReplay({ refCount: true, bufferSize: 1 })
@@ -197,14 +147,6 @@ export class MemberDialogComponent implements OnInit, OnDestroy {
         return this.groupService.getAll(this.params.organizationId);
       })
     );
-    const userGroups$ = this.params.organizationUserId
-      ? of(
-          await this.organizationUserService.getOrganizationUserGroups(
-            this.params.organizationId,
-            this.params.organizationUserId
-          )
-        )
-      : of([]);
 
     combineLatest({
       organization: organization$,
@@ -213,48 +155,80 @@ export class MemberDialogComponent implements OnInit, OnDestroy {
         ? this.userService.get(this.params.organizationId, this.params.organizationUserId)
         : of(null),
       groups: groups$,
-      userGroups: userGroups$,
     })
       .pipe(takeUntil(this.destroy$))
-      .subscribe(({ organization, collections, userDetails, groups, userGroups }) => {
+      .subscribe(({ organization, collections, userDetails, groups }) => {
         this.organization = organization;
-        const collectionsFromGroups = groups
-          .filter((group) => userGroups.includes(group.id))
-          .flatMap((group) =>
-            group.collections.map((accessSelection) => {
-              const collection = collections.find((c) => c.id === accessSelection.id);
-              return { group, collection, accessSelection };
-            })
-          );
-        this.accessItems = [].concat(
-          collectionsFromGroups.map(({ collection, accessSelection, group }) =>
-            mapCollectionToAccessItemView(collection, accessSelection, group)
-          ),
+        this.canUseCustomPermissions = organization.useCustomPermissions;
+
+        this.collectionAccessItems = [].concat(
           collections.map((c) => mapCollectionToAccessItemView(c))
+        );
+
+        this.groupAccessItems = [].concat(
+          groups.map<AccessItemView>((g) => mapGroupToAccessItemView(g))
         );
 
         if (this.params.organizationUserId) {
           if (!userDetails) {
             throw new Error("Could not find user to edit.");
           }
+          this.isRevoked = userDetails.status === OrganizationUserStatusType.Revoked;
+          const assignedCollectionsPermissions = {
+            manageAssignedCollections: userDetails.permissions.manageAssignedCollections,
+            editAssignedCollections: userDetails.permissions.editAssignedCollections,
+            deleteAssignedCollections: userDetails.permissions.deleteAssignedCollections,
+          };
+          const allCollectionsPermissions = {
+            manageAllCollections: userDetails.permissions.manageAllCollections,
+            createNewCollections: userDetails.permissions.createNewCollections,
+            editAnyCollection: userDetails.permissions.editAnyCollection,
+            deleteAnyCollection: userDetails.permissions.deleteAnyCollection,
+          };
+          if (userDetails.type === OrganizationUserType.Custom) {
+            this.permissionsGroup.patchValue({
+              accessEventLogs: userDetails.permissions.accessEventLogs,
+              accessImportExport: userDetails.permissions.accessImportExport,
+              accessReports: userDetails.permissions.accessReports,
+              manageGroups: userDetails.permissions.manageGroups,
+              manageSso: userDetails.permissions.manageSso,
+              managePolicies: userDetails.permissions.managePolicies,
+              manageUsers: userDetails.permissions.manageUsers,
+              manageResetPassword: userDetails.permissions.manageResetPassword,
+              manageAssignedCollectionsGroup: assignedCollectionsPermissions,
+              manageAllCollectionsGroup: allCollectionsPermissions,
+            });
+          }
+
+          const collectionsFromGroups = groups
+            .filter((group) => userDetails.groups.includes(group.id))
+            .flatMap((group) =>
+              group.collections.map((accessSelection) => {
+                const collection = collections.find((c) => c.id === accessSelection.id);
+                return { group, collection, accessSelection };
+              })
+            );
+
+          this.collectionAccessItems = this.collectionAccessItems.concat(
+            collectionsFromGroups.map(({ collection, accessSelection, group }) =>
+              mapCollectionToAccessItemView(collection, accessSelection, group)
+            )
+          );
 
           const accessSelections = mapToAccessSelections(userDetails);
+          const groupAccessSelections = mapToGroupAccessSelections(userDetails.groups);
+
+          this.formGroup.removeControl("emails");
           this.formGroup.patchValue({
+            type: userDetails.type,
             accessAllCollections: userDetails.accessAll,
             access: accessSelections,
+            groups: groupAccessSelections,
           });
         }
 
         this.loading = false;
       });
-  }
-
-  async loadCollections() {
-    const response = await this.apiService.getCollections(this.params.organizationId);
-    const collections = response.data.map(
-      (r) => new Collection(new CollectionData(r as CollectionDetailsResponse))
-    );
-    this.collections = await this.collectionService.decryptMany(collections);
   }
 
   check(c: CollectionView, select?: boolean) {
@@ -268,15 +242,44 @@ export class MemberDialogComponent implements OnInit, OnDestroy {
     this.collections.forEach((c) => this.check(c, select));
   }
 
-  setRequestPermissions(p: PermissionsApi, clearPermissions: boolean) {
-    Object.assign(p, clearPermissions ? new PermissionsApi() : this.permissions);
-    return p;
+  setRequestPermissions(p: PermissionsApi, clearPermissions: boolean): PermissionsApi {
+    if (clearPermissions) {
+      return new PermissionsApi();
+    }
+    const partialPermissions: Partial<PermissionsApi> = {
+      accessEventLogs: this.permissionsGroup.value.accessEventLogs,
+      accessImportExport: this.permissionsGroup.value.accessImportExport,
+      accessReports: this.permissionsGroup.value.accessReports,
+      manageGroups: this.permissionsGroup.value.manageGroups,
+      manageSso: this.permissionsGroup.value.manageSso,
+      managePolicies: this.permissionsGroup.value.managePolicies,
+      manageUsers: this.permissionsGroup.value.manageUsers,
+      manageResetPassword: this.permissionsGroup.value.manageResetPassword,
+      manageAllCollections:
+        this.permissionsGroup.value.manageAllCollectionsGroup.manageAllCollections,
+      createNewCollections:
+        this.permissionsGroup.value.manageAllCollectionsGroup.createNewCollections,
+      editAnyCollection: this.permissionsGroup.value.manageAllCollectionsGroup.editAnyCollection,
+      deleteAnyCollection:
+        this.permissionsGroup.value.manageAllCollectionsGroup.deleteAnyCollection,
+      manageAssignedCollections:
+        this.permissionsGroup.value.manageAssignedCollectionsGroup.manageAssignedCollections,
+      editAssignedCollections:
+        this.permissionsGroup.value.manageAssignedCollectionsGroup.editAssignedCollections,
+      deleteAssignedCollections:
+        this.permissionsGroup.value.manageAssignedCollectionsGroup.deleteAssignedCollections,
+    };
+
+    return Object.assign(p, partialPermissions);
   }
 
   handleDependentPermissions() {
     // Manage Password Reset must have Manage Users enabled
-    if (this.permissions.manageResetPassword && !this.permissions.manageUsers) {
-      this.permissions.manageUsers = true;
+    if (
+      this.permissionsGroup.value.manageResetPassword &&
+      !this.permissionsGroup.value.manageUsers
+    ) {
+      this.permissionsGroup.value.manageUsers = true;
       (document.getElementById("manageUsers") as HTMLInputElement).checked = true;
       this.platformUtilsService.showToast(
         "info",
@@ -291,7 +294,7 @@ export class MemberDialogComponent implements OnInit, OnDestroy {
       return;
     }
 
-    if (!this.canUseCustomPermissions && this.type === OrganizationUserType.Custom) {
+    if (!this.canUseCustomPermissions && this.customUserTypeSelected) {
       this.platformUtilsService.showToast(
         "error",
         null,
@@ -300,37 +303,34 @@ export class MemberDialogComponent implements OnInit, OnDestroy {
       return;
     }
 
-    try {
-      const userView = new OrganizationUserAdminView();
+    const userView = new OrganizationUserAdminView();
+    userView.id = this.params.organizationUserId;
+    userView.organizationId = this.params.organizationId;
+    userView.accessAll = this.accessAllCollections;
+    userView.type = this.formGroup.value.type;
+    userView.permissions = this.setRequestPermissions(
+      userView.permissions ?? new PermissionsApi(),
+      userView.type !== OrganizationUserType.Custom
+    );
+    userView.collections = this.formGroup.value.access
+      .filter((v) => v.type === AccessItemType.Collection)
+      .map(convertToSelectionView);
+    userView.groups = this.formGroup.value.groups.map((m) => m.id);
+
+    if (this.editMode) {
+      await this.userService.save(userView);
+    } else {
       userView.id = this.params.organizationUserId;
-      userView.organizationId = this.params.organizationId;
-      userView.accessAll = this.accessAllCollections;
-      userView.type = this.type;
-      userView.permissions = this.setRequestPermissions(
-        userView.permissions ?? new PermissionsApi(),
-        userView.type !== OrganizationUserType.Custom
-      );
-      userView.collections = this.formGroup.controls.access.value
-        .filter((v) => v.type === AccessItemType.Collection)
-        .map(convertToSelectionView);
-
-      if (this.editMode) {
-        await this.userService.save(userView);
-      } else {
-        userView.id = this.params.organizationUserId;
-        const emails = [...new Set(this.emails.trim().split(/\s*,\s*/))];
-        await this.userService.invite(emails, userView);
-      }
-
-      this.platformUtilsService.showToast(
-        "success",
-        null,
-        this.i18nService.t(this.editMode ? "editedUserId" : "invitedUsers", this.params.name)
-      );
-      this.close(MemberDialogResult.Saved);
-    } catch (e) {
-      this.logService.error(e);
+      const emails = [...new Set(this.formGroup.value.emails.trim().split(/\s*,\s*/))];
+      await this.userService.invite(emails, userView);
     }
+
+    this.platformUtilsService.showToast(
+      "success",
+      null,
+      this.i18nService.t(this.editMode ? "editedUserId" : "invitedUsers", this.params.name)
+    );
+    this.close(MemberDialogResult.Saved);
   };
 
   delete = async () => {
@@ -354,21 +354,17 @@ export class MemberDialogComponent implements OnInit, OnDestroy {
       return false;
     }
 
-    try {
-      await this.organizationUserService.deleteOrganizationUser(
-        this.params.organizationId,
-        this.params.organizationUserId
-      );
+    await this.organizationUserService.deleteOrganizationUser(
+      this.params.organizationId,
+      this.params.organizationUserId
+    );
 
-      this.platformUtilsService.showToast(
-        "success",
-        null,
-        this.i18nService.t("removedUserId", this.params.name)
-      );
-      this.close(MemberDialogResult.Deleted);
-    } catch (e) {
-      this.logService.error(e);
-    }
+    this.platformUtilsService.showToast(
+      "success",
+      null,
+      this.i18nService.t("removedUserId", this.params.name)
+    );
+    this.close(MemberDialogResult.Deleted);
   };
 
   revoke = async () => {
@@ -389,22 +385,18 @@ export class MemberDialogComponent implements OnInit, OnDestroy {
       return false;
     }
 
-    try {
-      await this.organizationUserService.revokeOrganizationUser(
-        this.params.organizationId,
-        this.params.organizationUserId
-      );
+    await this.organizationUserService.revokeOrganizationUser(
+      this.params.organizationId,
+      this.params.organizationUserId
+    );
 
-      this.platformUtilsService.showToast(
-        "success",
-        null,
-        this.i18nService.t("revokedUserId", this.params.name)
-      );
-      this.isRevoked = true;
-      this.close(MemberDialogResult.Revoked);
-    } catch (e) {
-      this.logService.error(e);
-    }
+    this.platformUtilsService.showToast(
+      "success",
+      null,
+      this.i18nService.t("revokedUserId", this.params.name)
+    );
+    this.isRevoked = true;
+    this.close(MemberDialogResult.Revoked);
   };
 
   restore = async () => {
@@ -412,22 +404,18 @@ export class MemberDialogComponent implements OnInit, OnDestroy {
       return;
     }
 
-    try {
-      await this.organizationUserService.restoreOrganizationUser(
-        this.params.organizationId,
-        this.params.organizationUserId
-      );
+    await this.organizationUserService.restoreOrganizationUser(
+      this.params.organizationId,
+      this.params.organizationUserId
+    );
 
-      this.platformUtilsService.showToast(
-        "success",
-        null,
-        this.i18nService.t("restoredUserId", this.params.name)
-      );
-      this.isRevoked = false;
-      this.close(MemberDialogResult.Restored);
-    } catch (e) {
-      this.logService.error(e);
-    }
+    this.platformUtilsService.showToast(
+      "success",
+      null,
+      this.i18nService.t("restoredUserId", this.params.name)
+    );
+    this.isRevoked = false;
+    this.close(MemberDialogResult.Restored);
   };
 
   ngOnDestroy() {
@@ -454,9 +442,18 @@ function mapCollectionToAccessItemView(
     id: group ? `${collection.id}-${group.id}` : collection.id,
     labelName: collection.name,
     listName: collection.name,
-    readonly: accessSelection !== undefined,
+    readonly: group !== undefined,
     readonlyPermission: accessSelection ? convertToPermission(accessSelection) : undefined,
     viaGroupName: group?.name,
+  };
+}
+
+function mapGroupToAccessItemView(group: GroupView): AccessItemView {
+  return {
+    type: AccessItemType.Group,
+    id: group.id,
+    labelName: group.name,
+    listName: group.name,
   };
 }
 
@@ -469,6 +466,18 @@ function mapToAccessSelections(user: OrganizationUserAdminView): AccessItemValue
       id: selection.id,
       type: AccessItemType.Collection,
       permission: convertToPermission(selection),
+    }))
+  );
+}
+
+function mapToGroupAccessSelections(groups: string[]): AccessItemValue[] {
+  if (groups == undefined) {
+    return [];
+  }
+  return [].concat(
+    groups.map((groupId) => ({
+      id: groupId,
+      type: AccessItemType.Group,
     }))
   );
 }
