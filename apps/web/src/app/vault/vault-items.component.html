@@ -21,7 +21,7 @@
           }}</label>
         </th>
         <th bitCell class="tw-w-1/2">{{ "name" | i18n }}</th>
-        <th bitCell class="tw-w-1/2">
+        <th bitCell class="tw-w-max">
           <ng-container *ngIf="!organization">{{ "owner" | i18n }}</ng-container>
           <ng-container *ngIf="organization">
             {{ (activeFilter.selectedCollectionNode ? "groups" : "collections") | i18n }}
@@ -71,7 +71,7 @@
       </tr>
     </ng-container>
     <ng-container body>
-      <tr bitRow *ngFor="let col of filteredCollections">
+      <tr bitRow *ngFor="let col of filteredCollections" alignContent="middle">
         <td bitCell (click)="selectRow(col)">
           <input
             *ngIf="organization && col.node.id !== null"
@@ -86,8 +86,13 @@
             <i class="bwi bwi-fw bwi-lg bwi-collection"></i>
           </div>
         </td>
-        <td bitCell class="tw-font-bold" (click)="selectRow(col)">
-          <button bitLink linkType="secondary" (click)="navigateCollection(col)">
+        <td bitCell (click)="selectRow(col)">
+          <button
+            bitLink
+            class="tw-text-start"
+            linkType="secondary"
+            (click)="navigateCollection(col)"
+          >
             {{ col.node.name }}
           </button>
         </td>
@@ -149,22 +154,24 @@
           </bit-menu>
         </td>
       </tr>
-      <tr bitRow *ngFor="let c of filteredCiphers">
+      <tr bitRow *ngFor="let c of filteredCiphers" alignContent="middle">
         <td bitCell (click)="selectRow(c)">
           <input type="checkbox" [(ngModel)]="$any(c).checked" appStopProp />
         </td>
         <td bitCell (click)="selectRow(c)">
           <app-vault-icon [cipher]="c"></app-vault-icon>
         </td>
-        <td bitCell (click)="selectRow(c)">
-          <a
-            appStopProp
+        <td bitCell class="tw-break-all" (click)="selectRow(c)">
+          <button
+            bitLink
+            class="tw-text-start"
             [routerLink]="[]"
             [queryParams]="{ itemId: c.id }"
             queryParamsHandling="merge"
             title="{{ 'editItem' | i18n }}"
-            >{{ c.name }}</a
           >
+            {{ c.name }}
+          </button>
           <ng-container *ngIf="c.hasAttachments">
             <i
               class="bwi bwi-paperclip"
