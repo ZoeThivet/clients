@@ -32,8 +32,8 @@ export class SelectComponent<T> implements BitFormFieldControl, ControlValueAcce
   @Input() items: Option<T>[] = [];
   @Input() placeholder = this.i18nService.t("selectPlaceholder");
 
-  protected selected: Option<T>;
-
+  protected selectedValue: T;
+  protected selectedOption: Option<T>;
   protected searchInputId = `bit-select-search-input-${nextId++}`;
 
   private notifyOnChange?: (value: T) => void;
@@ -46,8 +46,9 @@ export class SelectComponent<T> implements BitFormFieldControl, ControlValueAcce
   }
 
   @ContentChildren(OptionComponent)
-  protected set breadcrumbList(value: QueryList<OptionComponent<T>>) {
+  protected set options(value: QueryList<OptionComponent<T>>) {
     this.items = value.toArray();
+    this.selectedOption = this.findSelectedOption(this.items, this.selectedValue);
   }
 
   @HostBinding("class") protected classes = ["tw-block", "tw-w-full"];
@@ -64,7 +65,8 @@ export class SelectComponent<T> implements BitFormFieldControl, ControlValueAcce
 
   /**Implemented as part of NG_VALUE_ACCESSOR */
   writeValue(obj: T): void {
-    this.selected = this.items.find((item) => item.value === obj);
+    this.selectedValue = obj;
+    this.selectedOption = this.findSelectedOption(this.items, this.selectedValue);
   }
 
   /**Implemented as part of NG_VALUE_ACCESSOR */
@@ -83,12 +85,12 @@ export class SelectComponent<T> implements BitFormFieldControl, ControlValueAcce
   }
 
   /**Implemented as part of NG_VALUE_ACCESSOR */
-  protected onChange(items: T) {
+  protected onChange(option: Option<T> | null) {
     if (!this.notifyOnChange) {
       return;
     }
 
-    this.notifyOnChange(items);
+    this.notifyOnChange(option?.value);
   }
 
   /**Implemented as part of NG_VALUE_ACCESSOR */
@@ -139,5 +141,9 @@ export class SelectComponent<T> implements BitFormFieldControl, ControlValueAcce
   get error(): [string, any] {
     const key = Object.keys(this.ngControl?.errors)[0];
     return [key, this.ngControl?.errors[key]];
+  }
+
+  private findSelectedOption(items: Option<T>[], value: T): Option<T> | undefined {
+    return items.find((item) => item.value === value);
   }
 }
