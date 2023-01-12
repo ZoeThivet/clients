@@ -31,6 +31,7 @@
           <bit-form-field>
             <bit-label>{{ "nestCollectionUnder" | i18n }}</bit-label>
             <bit-select bitInput formControlName="parent">
+              <bit-option [value]="undefined" [label]="'noCollection' | i18n"> </bit-option>
               <bit-option
                 *ngIf="deletedParentName"
                 disabled

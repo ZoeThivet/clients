@@ -135,7 +135,7 @@ export class CollectionDialogComponent implements OnInit, OnDestroy {
         } else {
           this.nestOptions = collections;
           const parent = collections.find((c) => c.id === this.params.parentCollectionId);
-          this.formGroup.patchValue({ parent: parent?.name ?? null });
+          this.formGroup.patchValue({ parent: parent?.name ?? undefined });
         }
 
         this.loading = false;
