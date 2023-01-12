@@ -1,3 +1,5 @@
+// DISCLAIMER: This is not an official list and should only used
+// to provide realistic example data in stories.
 export const countries = [
   { value: "US", name: "United States" },
   { value: "CN", name: "China" },
