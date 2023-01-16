@@ -1156,7 +1156,6 @@
       function selectAllFromDoc(theSelector) {
           // START MODIFICATION
           return queryDocAll(document, document, function(node) {
-              // required check for instanceof Element to make sure .matches method exists.
               return node.matches(theSelector);
           });
           // END MODIFICATION
