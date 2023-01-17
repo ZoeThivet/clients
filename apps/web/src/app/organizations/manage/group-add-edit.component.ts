@@ -92,7 +92,7 @@ export class GroupAddEditComponent implements OnInit, OnDestroy {
   groupForm = this.formBuilder.group({
     accessAll: [false],
     name: ["", [Validators.required, Validators.maxLength(100)]],
-    externalId: this.formBuilder.control({ value: "", disabled: true }, Validators.maxLength(300)),
+    externalId: this.formBuilder.control({ value: "", disabled: true }),
     members: [[] as AccessItemValue[]],
     collections: [[] as AccessItemValue[]],
   });
@@ -237,7 +237,6 @@ export class GroupAddEditComponent implements OnInit, OnDestroy {
 
     const formValue = this.groupForm.value;
     groupView.name = formValue.name;
-    groupView.externalId = formValue.externalId;
     groupView.accessAll = formValue.accessAll;
     groupView.members = formValue.members?.map((m) => m.id) ?? [];
 
