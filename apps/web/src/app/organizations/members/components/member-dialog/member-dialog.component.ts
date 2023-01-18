@@ -222,6 +222,7 @@ export class MemberDialogComponent implements OnInit, OnDestroy {
           this.formGroup.removeControl("emails");
           this.formGroup.patchValue({
             type: userDetails.type,
+            externalId: userDetails.externalId,
             accessAllCollections: userDetails.accessAll,
             access: accessSelections,
             groups: groupAccessSelections,

@@ -70,6 +70,7 @@ export class UserAdminService {
       view.userId = u.userId;
       view.type = u.type;
       view.status = u.status;
+      view.externalId = u.externalId;
       view.accessAll = u.accessAll;
       view.permissions = u.permissions;
       view.resetPasswordEnrolled = u.resetPasswordEnrolled;
